@@ -1,5 +1,8 @@
-# Code for slice sampling for an arbitrary unimodal Gaussian as the sampling distribution P(x)
+# Code for slice sampling MCMC for an arbitrary unimodal Gaussian as the sampling distribution P(x)
 #     Naman Deep Singh  25-12-2019
+
+
+# Inverse of the distribution is used in this case
 
 import numpy as np
 import scipy.stats as st

@@ -9,15 +9,9 @@ import numpy as np
 import scipy.io as sio
 
                                                     ################      Data loading    ################
-mat_contents = sio.loadmat('MNIST-TrainTestNonBinary.mat')
-mat_contents.keys()
-X_trai = mat_contents['Xtrain']
-y_train = mat_contents['Ytrain']
-X_test = mat_contents['Xtest']
-y_test = mat_contents['Ytest']
 
-X_train = np.hstack((np.array(X_trai),np.array(y_train)))
-X_test = np.hstack((np.array(X_test),np.asarray(y_test)))
+X_train = "load data"
+X_test = "load test data"
 np.random.shuffle(X_train)
 
 y_train = X_train[:,-1]
@@ -96,6 +90,7 @@ while start < 600-batch_size:
     start+=batch_size
 
 # val = np.zeros(shape=[550])
+                              ###############        Test your model     ###########
 corr = 0
 predicted = np.argmax(np.dot(X[0:500,:],W))
 result = numpy.where(predicted==y[0:predicted.size])

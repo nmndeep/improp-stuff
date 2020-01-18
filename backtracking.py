@@ -66,13 +66,13 @@ def backprop(X, y, W, lamb):
 
     return L, grad_W
                                 ########   Paramaters and init    #############
-alpha = 0.4
+alpha = 0.4       # #   Tuneable
 beta = 0.6      ###    For backtracking
 W = np.zeros(shape=(784, n_classes))
 lamb = 0   ### lambda in weight regularizer
 t = 1
 
-                                #########     Function for backtracking rule        ############
+                                #########     Function for backtracking rule (Aramijo stopping criterion)       ############
 
 def backtrack(W, grad_W, loss, alpha, X, y, lamb, t):
     count = 1

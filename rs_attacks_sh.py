@@ -51,6 +51,7 @@ class RSAttack():
             log_path=None,
             constant_schedule=False,
             init_patches='stripes',
+            frame_updates = 'squares_inside_frame',
             data_loader=None):
         """
         Sparse-RS implementation in PyTorch
@@ -72,7 +73,7 @@ class RSAttack():
         self.logger = Logger(log_path)
         self.constant_schedule = constant_schedule
         self.init_patches = init_patches
-        self.frame_updates = 'squares_inside_frame'
+        self.frame_updates = frame_updates
         self.data_loader = data_loader
         self.resample_loc = 10000
 
@@ -167,7 +168,7 @@ class RSAttack():
         if self.rescale_schedule:
             it = int(it / self.n_queries * 10000)
 
-        if 'patches' in self.norm:   ###   for square attack
+        if 'patches' or 'frames' in self.norm:   ###   for square attack
 
             if 10 < it <= 50:
                 p = self.p_init / 2
@@ -190,7 +191,7 @@ class RSAttack():
             else:
                 p = self.p_init
 
-        if 'frames' in self.norm: #'rectangles'
+        if 'squares_inside_frame' in self.frame_updates:
                 tot_qr = 10000 if self.rescale_schedule else self.n_queries
                 return max(2. * (float(tot_qr - it) / tot_qr  - .5) * self.p_init, 0.)
         return p
@@ -590,6 +591,8 @@ class RSAttack():
                 #x_new = x.clone()
                 if self.init_patches =='signhunt':
                     frame_coll = torch.ones([x.shape[0], c, eps]).to(self.device)
+                elif self.init_patches == 'stand_patch':
+                    frame_coll =  self.random_choice([x.shape[0], c, eps]).clamp(0., 1.)
                 else:
                     frame_coll = torch.zeros([x.shape[0], c, eps]).clamp(0., 1.).to(self.device)
                     frame_univ = torch.zeros([1, c, eps]).to(self.device)
@@ -599,13 +602,13 @@ class RSAttack():
                 it_init = 0
                 loss_min = float(1e10) * torch.ones_like(y)
                 margin_min = loss_min.clone()
-                n_queries = torch.ones(x.shape[0]).to(self.device)
+                n_queries = torch.zeros(x.shape[0]).to(self.device)
                 mask_frame = torch.zeros([x.shape[0], c, h, w]).to(self.device)
                 #mask_frame[:, :, ind[:, 0], ind[:, 1]] += frame_univ
                 #x_new[:, :, ind[:, 0], ind[:, 1]] = 0.
                 #x_new[:, :, ind[:, 0], ind[:, 1]] += frame_univ
                 n_succs = 0
-                n_queries = torch.ones(x.shape[0]).to(self.device)
+                n_queries = torch.zeros(x.shape[0]).to(self.device)
                 s_it = torch.zeros([2]).long()   # 0 if self.frames_updates == 'standard' else
                 ind_it = torch.zeros([x.shape[0], 2]).long()
 
@@ -651,8 +654,40 @@ class RSAttack():
 
                     if self.attack =='sparse-rs':
                         if self.frame_updates =='stand':
-                            frame_new[:, :, ind_it] = 0.
-                            frame_new[:, :, ind_it] += self.random_choice(frame_new[:, :, ind_it].shape).clamp(0., 1.)
+                            eps_it = 1 #max(int(self.p_selection(it) ** 1. * eps), 1)
+                            s_it = self.s_selector(it) #self.eps
+                            mask_frame_curr[:, :, ind[:, 0], ind[:, 1]] = 0
+                            mask_frame_curr[:, :, ind[:, 0], ind[:, 1]] += frame_curr
+                            for xr in range(x_curr.shape[0]):
+                                dir_h = self.random_choice([x_curr.shape[0],1]).long().cpu()
+                                dir_w = self.random_choice([x_curr.shape[0],1]).long().cpu()
+                                vals_new = self.random_choice([c, eps_it]).clamp(0., 1.)  # update values
+
+                                ind_new = torch.randperm(eps)[:eps_it]  # update locations
+                                if s_it!=1:
+                                    for i_h in range(s_it):
+                                        for i_w in range(s_it):
+                                            hhh = (ind[ind_new, 0] + dir_h*i_h).clamp(0, h - 1)  # 326 coords
+                                            www = (ind[ind_new, 1] + dir_w*i_w).clamp(0, w - 1)  # 326 coords
+                                            mask_frame_curr[xr, :, hhh, www] = vals_new.clone()
+
+                                elif s_it == 1:
+                                    vall = self.bias_upd(frame_curr[xr,:,ind_new])
+                                    vall = np.array(vall)
+                                    # print("vall after", vall)
+                                    prev = frame_curr[xr,:,ind_new]
+                                    neww = vall
+                                    vall = torch.from_numpy(vall).unsqueeze_(1)
+                                    vall = vall.type(torch.FloatTensor)
+                                    for i_h in range(s_it):
+                                        for i_w in range(s_it):
+                                            hhh = (ind[ind_new, 0] + dir_h*i_h).clamp(0, h - 1)  # 326 coords
+                                            www = (ind[ind_new, 1] + dir_w*i_w).clamp(0, w - 1)  # 326 coords
+                                            mask_frame_curr[xr, :, hhh, www] = vall.to(self.device)
+
+                            frame_new = mask_frame_curr[:, :, ind[:, 0], ind[:, 1]]  # # [1, 3, 16320]
+                            if len(frame_new.shape) == 2:
+                                frame_new.unsqueeze_(0)
                             frame_new.clamp_(0., 1.)
 
                         elif self.frame_updates == 'squares_inside_frame':
@@ -694,11 +729,11 @@ class RSAttack():
                                         ] += self.random_choice([c, 1, 1]).clamp(0., 1.)
                             else:
                                 for xr in range(x_curr.shape[0]):
-                                    old_clr = mask_frame_curr[xr, :, ind_it_curr[0]:ind_it_curr[0] + s_it[0], ind_it_curr[1]:ind_it_currind_it_curr[1] + s_it[1]].clone()
+                                    old_clr = mask_frame_curr[xr, :, ind_it_curr[xr,0]:ind_it_curr[xr,0] + s_it[0], ind_it_curr[xr,1]:ind_it_curr[xr,1] + s_it[1]].clone()
                                     new_clr = old_clr.clone()
                                     while (new_clr == old_clr).all().item():
                                         new_clr = self.random_choice([c, 1, 1]).clone().clamp(0., 1.)
-                                    mask_frame_curr[xr, :, ind_it_curr[0]:ind_it_curr[0] + s_it[0], ind_it_curr[1]:ind_it_curr[1] + s_it[1]] = new_clr.clone()
+                                    mask_frame_curr[xr, :, ind_it_curr[xr,0]:ind_it_curr[xr,0] + s_it[0], ind_it_curr[xr,1]:ind_it_curr[xr,1] + s_it[1]] = new_clr.clone()
 
                         frame_new = mask_frame_curr[:, :, ind[:, 0], ind[:, 1]].clone()
                         frame_new.clamp_(0., 1.)
@@ -792,7 +827,6 @@ class RSAttack():
                             ).max(1)[0].view(x_new.shape[0], -1).sum(-1).max()),
                             '- epsit={:.0f}'.format(eps_it),
                             ]))
-
                     if ind_succ.numel() == n_ex_total:
                         break
 
@@ -905,7 +939,7 @@ class RSAttack():
                     #     img2 = np.swapaxes(img2,0,1)
                     #     img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
                     #     cv2.imwrite("./results_6_seed7/adv_img_{}_{}.png".format(it, y[0]), img2*255)
-                    eps_new = max(int(self.p_selection(it) ** 1. * eps), 1)
+                    eps_new = 1#max(int(self.p_selection(it) ** 1. * eps), 1)
                     s_it = self.s_selector(it) #self.eps
 
                     # create new candidate frame

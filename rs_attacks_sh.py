@@ -138,7 +138,7 @@ class RSAttack():
         if self.rescale_schedule:
             it = int(it / self.n_queries * 10000)   ###   change to 100000 for universal frames
         tot_qr = 10000 if self.rescale_schedule else self.n_queries
-        return max(2. * (float(tot_qr - it) / tot_qr  - .5) * self.eps/10*2, 0.)
+        return max(2. * (float(tot_qr - it) / tot_qr  - .5) * self.eps**2/10*2, 0.)
         # if it <= 2000:
         #     return self.eps+8
         #
@@ -657,7 +657,7 @@ class RSAttack():
                     if self.attack =='sparse-rs':
                         if self.frame_updates =='stand':
                             eps_it = 1 #max(int(self.p_selection(it) ** 1. * eps), 1)
-                            s_it = max(3* math.ceil(self.s_selector(it) * 4), 1) #self.eps
+                            s_it = max(3* math.ceil(self.s_selector(it)), 1) #self.eps
                             mask_frame_curr[:, :, ind[:, 0], ind[:, 1]] = 0
                             mask_frame_curr[:, :, ind[:, 0], ind[:, 1]] += frame_curr
                             for xr in range(x_curr.shape[0]):

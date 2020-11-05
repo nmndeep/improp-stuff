@@ -136,31 +136,32 @@ class RSAttack():
     def s_selector(self, it):
 
         if self.rescale_schedule:
-            it = int(it / self.n_queries * 100000)
-
-        if it <= 2000:
-            return self.eps+8
-
-        elif 2000 < it <= 4000:
-            return (self.eps)+6            #l3
-
-        elif 4000 < it <= 8000:
-            return (self.eps)+4
-
-        elif 8000 < it <= 12000:
-            return  self.eps+2 #(self.eps+2)//2
-
-        elif 12000 < it <= 16000:
-            return  self.eps
-
-        elif 16000 < it <= 20000:
-            return (self.eps+2)//2
-
-        elif 20000 < it <= 25000:
-            return  3 #self.eps//3
-
-        else:
-            return self.eps//4
+            it = int(it / self.n_queries * 10000)   ###   change to 100000 for universal frames
+        tot_qr = 10000 if self.rescale_schedule else self.n_queries
+        return max(2. * (float(tot_qr - it) / tot_qr  - .5) * self.eps/10*2, 0.)
+        # if it <= 2000:
+        #     return self.eps+8
+        #
+        # elif 2000 < it <= 4000:
+        #     return (self.eps)+6            #l3
+        #
+        # elif 4000 < it <= 8000:
+        #     return (self.eps)+4
+        #
+        # elif 8000 < it <= 12000:
+        #     return  self.eps+2 #(self.eps+2)//2
+        #
+        # elif 12000 < it <= 16000:
+        #     return  self.eps
+        #
+        # elif 16000 < it <= 20000:
+        #     return (self.eps+2)//2
+        #
+        # elif 20000 < it <= 25000:
+        #     return  3 #self.eps//3
+        #
+        # else:
+        #     return self.eps//4
 
     def p_selection(self, it):
         """ schedule to decrease the parameter alpha """
@@ -602,7 +603,7 @@ class RSAttack():
                 it_init = 0
                 loss_min = float(1e10) * torch.ones_like(y)
                 margin_min = loss_min.clone()
-                n_queries = torch.zeros(x.shape[0]).to(self.device)
+                n_queries = torch.ones(x.shape[0]).to(self.device)
                 mask_frame = torch.zeros([x.shape[0], c, h, w]).to(self.device)
                 #mask_frame[:, :, ind[:, 0], ind[:, 1]] += frame_univ
                 #x_new[:, :, ind[:, 0], ind[:, 1]] = 0.
@@ -644,8 +645,9 @@ class RSAttack():
                         margin_min_curr.unsqueeze_(0)
                         loss_min_curr.unsqueeze_(0)
                         frame_curr.unsqueeze_(0)
-                        loc_curr.unsqueeze_(0)
+                        # loc_curr.unsqueeze_(0)
                         idx_to_fool.unsqueeze_(0)
+                        mask_frame_curr.unsqueeze_(0)
 
                     eps_it = max(int(self.p_selection(it) ** 1. * eps), 1)
                     # for i in range(x_curr.shape[0]):
@@ -655,15 +657,14 @@ class RSAttack():
                     if self.attack =='sparse-rs':
                         if self.frame_updates =='stand':
                             eps_it = 1 #max(int(self.p_selection(it) ** 1. * eps), 1)
-                            s_it = self.s_selector(it) #self.eps
+                            s_it = max(3* math.ceil(self.s_selector(it) * 4), 1) #self.eps
                             mask_frame_curr[:, :, ind[:, 0], ind[:, 1]] = 0
                             mask_frame_curr[:, :, ind[:, 0], ind[:, 1]] += frame_curr
                             for xr in range(x_curr.shape[0]):
-                                dir_h = self.random_choice([x_curr.shape[0],1]).long().cpu()
-                                dir_w = self.random_choice([x_curr.shape[0],1]).long().cpu()
-                                vals_new = self.random_choice([c, eps_it]).clamp(0., 1.)  # update values
-
+                                dir_h = self.random_choice([1]).long().cpu()
+                                dir_w = self.random_choice([1]).long().cpu()
                                 ind_new = torch.randperm(eps)[:eps_it]  # update locations
+                                vals_new = self.random_choice([c, eps_it]).clamp(0., 1.)  # update values
                                 if s_it!=1:
                                     for i_h in range(s_it):
                                         for i_w in range(s_it):
@@ -812,8 +813,22 @@ class RSAttack():
                     #         assert loc.shape == (n_ex_total, 2)
                     #         loss_batch = loss_batch * 0. + 1e6
                     #         counter_resamplingimgs += 1
+                    if self.verbose and ind_succ.numel() != 0 and self.frame_updates =='stand':
+                        self.logger.log(' '.join(['{}'.format(it + 1),
+                            '- success rate={}/{} ({:.2%})'.format(
+                            ind_succ.numel(), n_ex_total,
+                            float(ind_succ.numel()) / n_ex_total),
+                            '- avg # queries={:.1f}'.format(
+                            n_queries[ind_succ].mean().item()),
+                            '- med # queries={:.1f}'.format(
+                            n_queries[ind_succ].median().item()),
+                            '- loss={:.3f}'.format(loss_min.mean()),
+                            '- max pert={:.0f}'.format(((x_new - x_curr).abs() > 0
+                            ).max(1)[0].view(x_new.shape[0], -1).sum(-1).max()),
+                            '- epsit={:.0f} - s_it={:.0f}'.format(eps_it, s_it),
+                            ]))
 
-                    if self.verbose and ind_succ.numel() != 0:
+                    if self.verbose and ind_succ.numel() != 0 and self.frame_updates !='stand':
                         self.logger.log(' '.join(['{}'.format(it + 1),
                             '- success rate={}/{} ({:.2%})'.format(
                             ind_succ.numel(), n_ex_total,
@@ -827,6 +842,7 @@ class RSAttack():
                             ).max(1)[0].view(x_new.shape[0], -1).sum(-1).max()),
                             '- epsit={:.0f}'.format(eps_it),
                             ]))
+
                     if ind_succ.numel() == n_ex_total:
                         break
 
@@ -939,7 +955,7 @@ class RSAttack():
                     #     img2 = np.swapaxes(img2,0,1)
                     #     img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2RGB)
                     #     cv2.imwrite("./results_6_seed7/adv_img_{}_{}.png".format(it, y[0]), img2*255)
-                    eps_new = 1#max(int(self.p_selection(it) ** 1. * eps), 1)
+                    eps_new = max(int(self.p_selection(it) ** 1. * eps), 1)
                     s_it = self.s_selector(it) #self.eps
 
                     # create new candidate frame

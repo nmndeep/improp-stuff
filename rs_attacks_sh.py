@@ -43,6 +43,7 @@ class RSAttack():
             alpha_init=.8,
             n_restarts=1,
             seed=0,
+            s_init = 2.,
             verbose=False,
             targeted=False,
             loss='margin',
@@ -72,6 +73,7 @@ class RSAttack():
         self.device = device
         self.logger = Logger(log_path)
         self.constant_schedule = constant_schedule
+        self.s_init = s_init
         self.init_patches = init_patches
         self.frame_updates = frame_updates
         self.data_loader = data_loader
@@ -138,7 +140,7 @@ class RSAttack():
         if self.rescale_schedule:
             it = int(it / self.n_queries * 10000)   ###   change to 100000 for universal frames
         tot_qr = 10000 if self.rescale_schedule else self.n_queries
-        return max(2. * (float(tot_qr - it) / tot_qr  - .5) * self.eps**2/10*2, 0.)
+        return 3*math.ceil(max(0.2*(float(tot_qr - it) / tot_qr  - .5) * self.eps**2*self.s_init, 0.))
         # if it <= 2000:
         #     return self.eps+8
         #
@@ -657,7 +659,7 @@ class RSAttack():
                     if self.attack =='sparse-rs':
                         if self.frame_updates =='stand':
                             eps_it = 1 #max(int(self.p_selection(it) ** 1. * eps), 1)
-                            s_it = max(3* math.ceil(self.s_selector(it)), 1) #self.eps
+                            s_it = max((self.s_selector(it)), 1) #self.eps
                             mask_frame_curr[:, :, ind[:, 0], ind[:, 1]] = 0
                             mask_frame_curr[:, :, ind[:, 0], ind[:, 1]] += frame_curr
                             for xr in range(x_curr.shape[0]):

@@ -1,6 +1,7 @@
 '''
-						FGSM is tried in this code. for l-inf 10 error is at ~70%.  This is done by creating data by all combinations of given ranges tot_points = 35*12*27*73
-					'''
+	FGSM is tried in this code. for l-inf 10 error is at ~70%.  
+	This is done by creating data by all combinations of given ranges tot_points = 35*12*27*73
+'''
 import torch
 import r4l.agent as agent
 import numpy as np
